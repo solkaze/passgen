@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>pass-gen</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', sans-serif;
+    background: #1c1c1c;
+    color: #d0d0d0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+  }
+  .card {
+    background: #2a2a2a;
+    border: 1px solid #3a3a3a;
+    border-radius: 12px;
+    padding: 2rem;
+    width: 100%;
+    max-width: 480px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  }
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1.5rem;
+  }
+  h1 { font-size: 1.5rem; color: #d0d0d0; }
+  .shutdown-btn {
+    width: auto;
+    padding: 0.3rem 0.8rem;
+    background: #555;
+    color: #aaa;
+    border: 1px solid #666;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    margin-top: 0;
+    transition: background 0.2s;
+  }
+  .shutdown-btn:hover { background: #b71c1c; color: white; border-color: #b71c1c; }
+  label { display: block; margin-bottom: 0.3rem; font-size: 0.85rem; color: #888; }
+  input[type="text"],
+  input[type="password"],
+  input[type="number"] {
+    width: 100%;
+    padding: 0.6rem 0.8rem;
+    background: #1c1c1c;
+    border: 1px solid #444;
+    border-radius: 6px;
+    color: #d0d0d0;
+    font-size: 1rem;
+    margin-bottom: 1rem;
+    outline: none;
+  }
+  input[type="text"]:focus,
+  input[type="password"]:focus,
+  input[type="number"]:focus { border-color: #4caf50; }
+  .row { display: flex; gap: 1rem; }
+  .row > div { flex: 1; }
+  /* トグルスイッチ */
+  .toggle-row {
+    display: flex;
+    gap: 1.5rem;
+    margin-bottom: 1rem;
+  }
+  .toggle-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+    color: #888;
+    cursor: pointer;
+    user-select: none;
+  }
+  .toggle {
+    position: relative;
+    width: 36px;
+    height: 20px;
+    flex-shrink: 0;
+  }
+  .toggle input { opacity: 0; width: 0; height: 0; }
+  .slider {
+    position: absolute;
+    inset: 0;
+    background: #444;
+    border-radius: 20px;
+    transition: background 0.2s;
+  }
+  .slider::before {
+    content: '';
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    left: 3px;
+    top: 3px;
+    background: #aaa;
+    border-radius: 50%;
+    transition: transform 0.2s, background 0.2s;
+  }
+  .toggle input:checked + .slider { background: #2e7d32; }
+  .toggle input:checked + .slider::before {
+    transform: translateX(16px);
+    background: #a5d6a7;
+  }
+  button {
+    width: 100%;
+    padding: 0.75rem;
+    background: #4caf50;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 1rem;
+    cursor: pointer;
+    margin-top: 0.5rem;
+    transition: background 0.2s;
+  }
+  button:hover { background: #388e3c; }
+  button:disabled { background: #444; cursor: not-allowed; }
+  .result {
+    display: none;
+    margin-top: 1.5rem;
+    background: #1c1c1c;
+    border: 1px solid #3a3a3a;
+    border-radius: 8px;
+    padding: 1rem;
+  }
+  .result.show { display: block; }
+  .password {
+    font-family: monospace;
+    font-size: 0.95rem;
+    word-break: break-all;
+    color: #a5d6a7;
+    margin-bottom: 0.75rem;
+    line-height: 1.6;
+  }
+  .copy-btn { background: #388e3c; margin-top: 0; }
+  .copy-btn:hover { background: #2e7d32; }
+  .msg { font-size: 0.8rem; color: #a5d6a7; text-align: center; margin-top: 0.5rem; min-height: 1.2em; }
+  .spinner { display: none; text-align: center; margin-top: 1rem; color: #888; }
+  .spinner.show { display: block; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="header">
+    <h1>pass-gen</h1>
+    <button class="shutdown-btn" onclick="shutdown()">サーバー終了</button>
+  </div>
+  <label>サイト名（ドメイン）</label>
+  <input type="text" id="site" placeholder="github.com" />
+  <label>コアパスワード</label>
+  <input type="password" id="master" placeholder="example" />
+  <div class="row">
+    <div>
+      <label>桁数</label>
+      <input type="number" id="length" value="48" min="8" max="128" />
+    </div>
+    <div>
+      <label>イテレーション</label>
+      <input type="number" id="iterations" value="600000" min="10000" />
+    </div>
+  </div>
+  <div class="toggle-row">
+    <label class="toggle-item">
+      <span class="toggle">
+        <input type="checkbox" id="useDigits" checked />
+        <span class="slider"></span>
+      </span>
+      数字を含める
+    </label>
+    <label class="toggle-item">
+      <span class="toggle">
+        <input type="checkbox" id="useSymbols" checked />
+        <span class="slider"></span>
+      </span>
+      記号を含める
+    </label>
+  </div>
+  <button id="genBtn" onclick="generate()">生成</button>
+  <div class="spinner" id="spinner">生成中...</div>
+  <div class="result" id="result">
+    <label>生成されたパスワード</label>
+    <div class="password" id="password"></div>
+    <button class="copy-btn" onclick="copyPassword()">コピー</button>
+    <div class="msg" id="msg"></div>
+  </div>
+</div>
+<script>
+  async function generate() {
+    const site        = document.getElementById('site').value.trim();
+    const master      = document.getElementById('master').value;
+    const length      = parseInt(document.getElementById('length').value);
+    const iterations  = parseInt(document.getElementById('iterations').value);
+    const use_digits  = document.getElementById('useDigits').checked;
+    const use_symbols = document.getElementById('useSymbols').checked;
+
+    if (!master) { alert('コアパスワードを入力してください'); return; }
+
+    document.getElementById('genBtn').disabled = true;
+    document.getElementById('spinner').classList.add('show');
+    document.getElementById('result').classList.remove('show');
+    document.getElementById('msg').textContent = '';
+
+    try {
+      const res = await fetch('/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ site, master, length, iterations, use_digits, use_symbols })
+      });
+      const data = await res.json();
+      if (data.password) {
+        document.getElementById('password').textContent = data.password;
+        document.getElementById('result').classList.add('show');
+      } else {
+        alert('エラー: ' + (data.error || '不明'));
+      }
+    } catch (e) {
+      alert('サーバーへの接続に失敗しました');
+    } finally {
+      document.getElementById('genBtn').disabled = false;
+      document.getElementById('spinner').classList.remove('show');
+    }
+  }
+
+  async function copyPassword() {
+    const pw = document.getElementById('password').textContent;
+    try {
+      await navigator.clipboard.writeText(pw);
+      document.getElementById('msg').textContent = 'コピーしました';
+      setTimeout(() => document.getElementById('msg').textContent = '', 2000);
+    } catch (e) {
+      document.getElementById('msg').textContent = 'コピーに失敗しました';
+    }
+  }
+
+  async function shutdown() {
+    if (!confirm('サーバーを終了しますか？')) return;
+    try {
+      await fetch('/shutdown', { method: 'POST' });
+    } catch (_) {
+      // サーバーが終了するとfetchは必ず失敗するので無視する
+    }
+    window.close();
+  }
+
+  // ウィンドウを閉じた際にサーバーを終了する
+  window.addEventListener('beforeunload', () => {
+    navigator.sendBeacon('/shutdown');
+  });
+
+  document.addEventListener('keydown', e => { if (e.key === 'Enter') generate(); });
+</script>
+</body>
+</html>
