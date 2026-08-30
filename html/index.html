@@ -47,7 +47,8 @@
   label { display: block; margin-bottom: 0.3rem; font-size: 0.85rem; color: #888; }
   input[type="text"],
   input[type="password"],
-  input[type="number"] {
+  input[type="number"],
+  select {
     width: 100%;
     padding: 0.6rem 0.8rem;
     background: #1c1c1c;
@@ -60,7 +61,8 @@
   }
   input[type="text"]:focus,
   input[type="password"]:focus,
-  input[type="number"]:focus { border-color: #4caf50; }
+  input[type="number"]:focus,
+  select:focus { border-color: #4caf50; }
   .row { display: flex; gap: 1rem; }
   .row > div { flex: 1; }
   /* トグルスイッチ */
@@ -162,6 +164,29 @@
       <input type="number" id="length" value="48" min="8" max="128" />
     </div>
     <div>
+      <label>アルゴリズム</label>
+      <select id="kdf" onchange="onKdfChange()">
+        <option value="argon2id" selected>Argon2id（推奨）</option>
+        <option value="pbkdf2">PBKDF2（互換用）</option>
+      </select>
+    </div>
+  </div>
+  <div class="row" id="argon2Params">
+    <div>
+      <label>タイムコスト</label>
+      <input type="number" id="timeCost" value="3" min="1" />
+    </div>
+    <div>
+      <label>メモリコスト（KiB）</label>
+      <input type="number" id="memoryCost" value="65536" min="8192" />
+    </div>
+    <div>
+      <label>並列度</label>
+      <input type="number" id="parallelism" value="4" min="1" />
+    </div>
+  </div>
+  <div class="row" id="pbkdf2Params" style="display: none;">
+    <div>
       <label>イテレーション</label>
       <input type="number" id="iterations" value="600000" min="10000" />
     </div>
@@ -192,13 +217,28 @@
   </div>
 </div>
 <script>
+  function onKdfChange() {
+    const kdf = document.getElementById('kdf').value;
+    document.getElementById('argon2Params').style.display = kdf === 'argon2id' ? 'flex' : 'none';
+    document.getElementById('pbkdf2Params').style.display = kdf === 'pbkdf2' ? 'flex' : 'none';
+  }
+
   async function generate() {
     const site        = document.getElementById('site').value.trim();
     const master      = document.getElementById('master').value;
     const length      = parseInt(document.getElementById('length').value);
-    const iterations  = parseInt(document.getElementById('iterations').value);
+    const kdf         = document.getElementById('kdf').value;
     const use_digits  = document.getElementById('useDigits').checked;
     const use_symbols = document.getElementById('useSymbols').checked;
+
+    const payload = { site, master, length, kdf, use_digits, use_symbols };
+    if (kdf === 'argon2id') {
+      payload.time_cost = parseInt(document.getElementById('timeCost').value);
+      payload.memory_cost = parseInt(document.getElementById('memoryCost').value);
+      payload.parallelism = parseInt(document.getElementById('parallelism').value);
+    } else {
+      payload.iterations = parseInt(document.getElementById('iterations').value);
+    }
 
     if (!master) { alert('コアパスワードを入力してください'); return; }
 
@@ -211,7 +251,7 @@
       const res = await fetch('/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ site, master, length, iterations, use_digits, use_symbols })
+        body: JSON.stringify(payload)
       });
       const data = await res.json();
       if (data.password) {

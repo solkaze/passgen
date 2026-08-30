@@ -9,6 +9,7 @@ path = "src/main.rs"
 
 [dependencies]
 pbkdf2 = { version = "0.12", features = ["simple"] }
+argon2 = "0.5"
 hmac = "0.12"
 sha2 = "0.10"
 clap = { version = "4", features = ["derive"] }
@@ -17,6 +18,7 @@ rpassword = "7"
 open = "5"
 tiny_http = "0.12"
 dotenvy = "0.15"
+base64 = "0.22"
 
 [target.'cfg(unix)'.dependencies]
 termios = "0.3"
