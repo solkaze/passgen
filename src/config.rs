@@ -6,7 +6,7 @@ use std::path::PathBuf;
 // ============================================================
 
 /// デフォルトのパスワード長
-pub const DEFAULT_LENGTH: usize = 48;
+pub const DEFAULT_LENGTH: usize = 64;
 
 /// デフォルトのPBKDF2イテレーション回数
 pub const DEFAULT_ITERATIONS: u32 = 600_000;
@@ -35,8 +35,14 @@ pub const DEFAULT_ARGON2_PARALLELISM: u32 = 4;
 /// コアパスワード入力プロンプト
 pub const PROMPT_CORE_PASSWORD: &str = "コアパスワードを入力してください: ";
 
+/// 設定ディレクトリ名（~/.config 配下）
+pub const CONFIG_DIR_NAME: &str = "passgen";
+
 /// シードファイル名
-pub const SEED_FILE_NAME: &str = ".pass-gen-seed";
+pub const SEED_FILE_NAME: &str = "passgen_seed";
+
+/// 旧シードファイル名（ホーム直下、移行用）
+pub const LEGACY_SEED_FILE_NAME: &str = ".pass-gen-seed";
 
 /// シードファイルのパーミッション（Unix のみ）
 #[cfg(unix)]
@@ -90,8 +96,19 @@ pub fn html_file_path() -> PathBuf {
     project_root().join(HTML_DIR_NAME).join(HTML_FILE_NAME)
 }
 
+/// 設定ディレクトリ（~/.config/passgen）を返す。
+pub fn config_dir() -> PathBuf {
+    home_dir().join(".config").join(CONFIG_DIR_NAME)
+}
+
 pub fn seed_file_path() -> PathBuf {
-    home_dir().join(SEED_FILE_NAME)
+    config_dir().join(SEED_FILE_NAME)
+}
+
+/// 旧バージョンで使用していたシードファイルのパス（~/.pass-gen-seed）。
+/// 新パスへの自動移行にのみ使用する。
+pub fn legacy_seed_file_path() -> PathBuf {
+    home_dir().join(LEGACY_SEED_FILE_NAME)
 }
 
 // ============================================================

@@ -19,6 +19,10 @@ use std::os::unix::fs::PermissionsExt;
 // ============================================================
 
 pub fn load_or_create_seed(path: &PathBuf) -> Vec<u8> {
+    if !path.exists() {
+        migrate_legacy_seed(path);
+    }
+
     if path.exists() {
         #[cfg(unix)]
         check_seed_permissions(path);
@@ -40,6 +44,25 @@ pub fn load_or_create_seed(path: &PathBuf) -> Vec<u8> {
         eprintln!("別端末で使用する場合はこのファイルをコピーしてください。");
         seed
     }
+}
+
+/// 旧パス（~/.pass-gen-seed）にシードファイルが残っている場合、新パスへ移行する。
+/// 既存パスワードとの互換性を保つため、新規生成より移行を優先する。
+fn migrate_legacy_seed(path: &PathBuf) {
+    let legacy_path = crate::config::legacy_seed_file_path();
+    if !legacy_path.exists() {
+        return;
+    }
+
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).expect("設定ディレクトリの作成に失敗しました");
+    }
+    fs::rename(&legacy_path, path).expect("シードファイルの移行に失敗しました");
+    eprintln!(
+        "シードファイルを移行しました: {} -> {}",
+        legacy_path.display(),
+        path.display()
+    );
 }
 
 /// シードファイルの中身を読み込み用のバイト列にデコードする。
@@ -73,6 +96,9 @@ fn encode_seed(seed: &[u8]) -> String {
 
 #[cfg(unix)]
 fn save_seed(path: &PathBuf, seed: &[u8]) {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).expect("設定ディレクトリの作成に失敗しました");
+    }
     let text = encode_seed(seed);
     let mut file = fs::OpenOptions::new()
         .write(true)
@@ -88,6 +114,9 @@ fn save_seed(path: &PathBuf, seed: &[u8]) {
 
 #[cfg(windows)]
 fn save_seed(path: &PathBuf, seed: &[u8]) {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).expect("設定ディレクトリの作成に失敗しました");
+    }
     let text = encode_seed(seed);
     let mut file = fs::OpenOptions::new()
         .write(true)
