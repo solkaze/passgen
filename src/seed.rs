@@ -18,6 +18,17 @@ use std::os::unix::fs::PermissionsExt;
 // シードファイル処理
 // ============================================================
 
+/// PEM風の開始行。SSHやTLSの秘密鍵ファイルと同様の見た目にすることで、
+/// 「これは秘密鍵として扱うべきファイルである」ことを一目で示す。
+const PEM_BEGIN: &str = "-----BEGIN PASSGEN PRIVATE SEED-----";
+/// PEM風の終了行。
+const PEM_END: &str = "-----END PASSGEN PRIVATE SEED-----";
+/// ファイル内に埋め込む警告コメント行。
+const PEM_WARNING: &str =
+    "Comment: これは秘密鍵に相当します。内容を表示・共有・コミットしないでください。";
+/// PEM形式でのbase64の折り返し幅（RFC 7468のPEM表記に準拠）。
+const PEM_LINE_WIDTH: usize = 64;
+
 pub fn load_or_create_seed(path: &PathBuf) -> Vec<u8> {
     if !path.exists() {
         migrate_legacy_seed(path);
@@ -41,6 +52,9 @@ pub fn load_or_create_seed(path: &PathBuf) -> Vec<u8> {
         let seed = generate_seed();
         save_seed(path, &seed);
         eprintln!("シードファイルを生成しました: {}", path.display());
+        eprintln!(
+            "これはSSH秘密鍵などと同様、他人に見せたり共有したりしてはいけないファイルです。"
+        );
         eprintln!("別端末で使用する場合はこのファイルをコピーしてください。");
         seed
     }
@@ -66,10 +80,14 @@ fn migrate_legacy_seed(path: &PathBuf) {
 }
 
 /// シードファイルの中身を読み込み用のバイト列にデコードする。
-/// 新形式（SSH秘密鍵のようなbase64テキスト）を優先して解釈し、
-/// 旧バージョンで生成された生バイナリ形式のファイルとも互換性を保つ。
+/// 現行形式（PEM風にBEGIN/ENDで囲んだbase64テキスト）を最優先で解釈し、
+/// 旧形式（BEGIN/ENDなしの1行base64テキスト）、
+/// さらに旧バージョンで生成された生バイナリ形式のファイルとも互換性を保つ。
 fn decode_seed(raw: &[u8]) -> Vec<u8> {
     if let Ok(text) = std::str::from_utf8(raw) {
+        if let Some(decoded) = decode_pem_seed(text) {
+            return decoded;
+        }
         let trimmed = text.trim();
         if let Ok(decoded) = BASE64.decode(trimmed) {
             if !decoded.is_empty() {
@@ -81,17 +99,46 @@ fn decode_seed(raw: &[u8]) -> Vec<u8> {
     raw.to_vec()
 }
 
+/// PEM風形式（BEGIN/ENDマーカーと折り返しbase64、コメント行）からシードを取り出す。
+fn decode_pem_seed(text: &str) -> Option<Vec<u8>> {
+    let begin = text.find(PEM_BEGIN)?;
+    let end = text.find(PEM_END)?;
+    let body = text.get(begin + PEM_BEGIN.len()..end)?;
+    let b64: String = body
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with("Comment:"))
+        .collect();
+    BASE64
+        .decode(b64.trim())
+        .ok()
+        .filter(|decoded| !decoded.is_empty())
+}
+
 fn generate_seed() -> Vec<u8> {
     let mut buf = vec![0u8; SEED_BYTES];
     getrandom::getrandom(&mut buf).expect("乱数生成に失敗しました");
     buf
 }
 
-/// シードをbase64エンコードし、SSH秘密鍵のようなランダムな文字列として保存する。
+/// シードをSSH秘密鍵やTLS証明書と同様のPEM風テキストとしてエンコードする。
+/// BEGIN/ENDマーカーと警告コメントを含めることで、単なる乱数文字列ではなく
+/// 秘密鍵として扱うべきファイルであることを見た目からも示す。
 fn encode_seed(seed: &[u8]) -> String {
-    let mut encoded = BASE64.encode(seed);
-    encoded.push('\n');
-    encoded
+    let b64 = BASE64.encode(seed);
+    let mut out = String::new();
+    out.push_str(PEM_BEGIN);
+    out.push('\n');
+    out.push_str(PEM_WARNING);
+    out.push('\n');
+    for chunk in b64.as_bytes().chunks(PEM_LINE_WIDTH) {
+        // chunkはbase64文字（ASCII）のみで構成されるため常に有効なUTF-8
+        out.push_str(std::str::from_utf8(chunk).expect("base64 chunk must be valid UTF-8"));
+        out.push('\n');
+    }
+    out.push_str(PEM_END);
+    out.push('\n');
+    out
 }
 
 #[cfg(unix)]
@@ -142,7 +189,9 @@ fn check_seed_permissions(path: &PathBuf) {
             mode,
             SEED_FILE_MODE
         );
-        eprintln!("秘密鍵と同様に扱う必要があるため、他ユーザーから読み取れない状態にしてください:");
+        eprintln!(
+            "秘密鍵と同様に扱う必要があるため、他ユーザーから読み取れない状態にしてください:"
+        );
         eprintln!("  chmod {:o} {}", SEED_FILE_MODE, path.display());
         std::process::exit(1);
     }

@@ -48,8 +48,8 @@ pub const LEGACY_SEED_FILE_NAME: &str = ".pass-gen-seed";
 #[cfg(unix)]
 pub const SEED_FILE_MODE: u32 = 0o600;
 
-/// シードのバイト長
-pub const SEED_BYTES: usize = 64;
+/// シードのバイト長（512バイト = 4096bit。RSA-4096の秘密鍵と同等のビット数）
+pub const SEED_BYTES: usize = 512;
 
 /// サーバーのデフォルトポート
 pub const DEFAULT_SERVER_PORT: u16 = 11010;
