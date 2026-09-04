@@ -35,7 +35,6 @@ pub fn load_or_create_seed(path: &PathBuf) -> Vec<u8> {
     }
 
     if path.exists() {
-        #[cfg(unix)]
         check_seed_permissions(path);
 
         let raw = fs::read(path).expect("シードファイルの読み込みに失敗しました");
@@ -195,4 +194,58 @@ fn check_seed_permissions(path: &PathBuf) {
         eprintln!("  chmod {:o} {}", SEED_FILE_MODE, path.display());
         std::process::exit(1);
     }
+}
+
+/// シードファイルのアクセス権限を検査する（Windows版）。
+/// Unix版のパーミッション検査（0600）に相当する検査をNTFSのACLに対して行う。
+/// 所有者・Administrators・SYSTEM 以外のアカウントにアクセスを許可するACEが
+/// 存在する場合、秘密鍵と同様に扱うべきファイルとして実行を中止する。
+#[cfg(windows)]
+fn check_seed_permissions(path: &std::path::Path) {
+    use crate::winacl::{verify_owner_only, AclProblem};
+
+    match verify_owner_only(path) {
+        Ok(None) => {}
+        Ok(Some(AclProblem::NoDacl)) => {
+            eprintln!(
+                "エラー: シードファイルのアクセス権限が不正です: {}",
+                path.display()
+            );
+            eprintln!("DACLが設定されておらず、全アカウントからアクセス可能な状態です。");
+            print_windows_fix_hint(path);
+            std::process::exit(1);
+        }
+        Ok(Some(AclProblem::ExtraAccessGranted)) => {
+            eprintln!(
+                "エラー: シードファイルのアクセス権限が不正です: {}",
+                path.display()
+            );
+            eprintln!(
+                "所有者・Administrators・SYSTEM 以外のアカウントがアクセスできる状態になっています。"
+            );
+            print_windows_fix_hint(path);
+            std::process::exit(1);
+        }
+        Err(err) => {
+            eprintln!(
+                "エラー: シードファイルのアクセス権限を確認できませんでした: {}",
+                path.display()
+            );
+            eprintln!("詳細: {}", err.0);
+            std::process::exit(1);
+        }
+    }
+}
+
+#[cfg(windows)]
+fn print_windows_fix_hint(path: &std::path::Path) {
+    let user = std::env::var("USERNAME").unwrap_or_else(|_| "<ユーザー名>".to_string());
+    eprintln!(
+        "秘密鍵と同様に扱う必要があるため、他アカウントからアクセスできない状態にしてください:"
+    );
+    eprintln!(
+        "  icacls \"{}\" /inheritance:r /grant:r \"{}\":F",
+        path.display(),
+        user
+    );
 }

@@ -5,6 +5,8 @@ mod input;
 mod kdf;
 mod seed;
 mod server;
+#[cfg(windows)]
+mod winacl;
 
 use clap::Parser;
 
