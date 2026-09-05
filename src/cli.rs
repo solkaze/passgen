@@ -74,10 +74,6 @@ pub struct Args {
     #[arg(short, long)]
     pub copy: bool,
 
-    /// ブラウザUIモードで起動する
-    #[arg(short = 'S', long = "server")]
-    pub server: bool,
-
     /// 数字を含めない
     #[arg(long = "no-digits")]
     pub no_digits: bool,

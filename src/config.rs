@@ -1,4 +1,3 @@
-use std::fs;
 use std::path::PathBuf;
 
 // ============================================================
@@ -51,18 +50,6 @@ pub const SEED_FILE_MODE: u32 = 0o600;
 /// シードのバイト長（512バイト = 4096bit。RSA-4096の秘密鍵と同等のビット数）
 pub const SEED_BYTES: usize = 512;
 
-/// サーバーのデフォルトポート
-pub const DEFAULT_SERVER_PORT: u16 = 11010;
-
-/// .env ファイル名（プロジェクトルートに配置）
-pub const ENV_FILE_NAME: &str = ".env";
-
-/// HTML ディレクトリ名（プロジェクトルート配下）
-pub const HTML_DIR_NAME: &str = "html";
-
-/// HTML ファイル名
-pub const HTML_FILE_NAME: &str = "index.html";
-
 // ============================================================
 // 設定ディレクトリ・ファイルパス
 // ============================================================
@@ -72,28 +59,6 @@ pub fn home_dir() -> PathBuf {
         .or_else(|_| std::env::var("USERPROFILE"))
         .expect("ホームディレクトリが取得できません");
     PathBuf::from(home)
-}
-
-/// 実行ファイルから見たプロジェクトルートを返す。
-/// 実行ファイルは `<project>/target/release/pass-gen` に置かれている想定で、
-/// 2 階層上をプロジェクトルートとする。
-/// `passgen init` でコピーした先の実行ファイルではこの解決は成立しない
-/// （サーバーモードはプロジェクトディレクトリ内の実行ファイルから起動する想定）。
-pub fn project_root() -> PathBuf {
-    let exe = std::env::current_exe().expect("実行ファイルのパスを取得できません");
-    exe.parent() // target/release
-        .and_then(|p| p.parent()) // target
-        .and_then(|p| p.parent()) // project root
-        .expect("プロジェクトルートの解決に失敗しました")
-        .to_path_buf()
-}
-
-pub fn env_file_path() -> PathBuf {
-    project_root().join(ENV_FILE_NAME)
-}
-
-pub fn html_file_path() -> PathBuf {
-    project_root().join(HTML_DIR_NAME).join(HTML_FILE_NAME)
 }
 
 /// 設定ディレクトリ（~/.config/passgen）を返す。
@@ -109,53 +74,4 @@ pub fn seed_file_path() -> PathBuf {
 /// 新パスへの自動移行にのみ使用する。
 pub fn legacy_seed_file_path() -> PathBuf {
     home_dir().join(LEGACY_SEED_FILE_NAME)
-}
-
-// ============================================================
-// .env 処理
-// ============================================================
-
-/// .env を読み込んでポート番号を返す。なければデフォルト値で .env を自動生成する。
-pub fn load_or_create_env() -> u16 {
-    let env_path = env_file_path();
-
-    if !env_path.exists() {
-        eprintln!(
-            ".env が見つかりません。デフォルト値で生成します: {}",
-            env_path.display()
-        );
-        let content = format!(
-            "# pass-gen 設定ファイル\n\
-             # サーバーのポート番号\n\
-             PORT={}\n",
-            DEFAULT_SERVER_PORT
-        );
-        fs::write(&env_path, content).expect(".env の書き込みに失敗しました");
-        eprintln!(".env を生成しました: {}", env_path.display());
-    }
-
-    // .env を読み込む
-    dotenvy::from_path(&env_path).ok();
-    std::env::var("PORT")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(DEFAULT_SERVER_PORT)
-}
-
-// ============================================================
-// HTML ファイル処理
-// ============================================================
-
-/// HTMLファイルを読み込む。存在しない場合はエラーで終了する。
-pub fn load_html() -> String {
-    let html_path = html_file_path();
-    if !html_path.exists() {
-        eprintln!(
-            "エラー: index.html が見つかりません: {}",
-            html_path.display()
-        );
-        eprintln!("プロジェクトの html/index.html が存在するか確認してください。");
-        std::process::exit(1);
-    }
-    fs::read_to_string(&html_path).expect("index.html の読み込みに失敗しました")
 }

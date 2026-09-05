@@ -5,7 +5,6 @@ mod init;
 mod input;
 mod kdf;
 mod seed;
-mod server;
 #[cfg(windows)]
 mod winacl;
 
@@ -25,13 +24,6 @@ fn main() {
 
     let seed_path = config::seed_file_path();
     let seed = seed::load_or_create_seed(&seed_path);
-
-    if args.server {
-        let port = config::load_or_create_env();
-        let html = config::load_html();
-        server::run_server(port, seed, html);
-        return;
-    }
 
     // CLIモード
     if args.length < MIN_PASSWORD_LENGTH {

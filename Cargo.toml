@@ -1,6 +1,6 @@
 [package]
 name = "passgen"
-version = "0.4.1"
+version = "0.6.0"
 edition = "2021"
 
 [[bin]]
@@ -15,9 +15,6 @@ sha2 = "0.10"
 clap = { version = "4", features = ["derive"] }
 getrandom = "0.2"
 rpassword = "7"
-open = "5"
-tiny_http = "0.12"
-dotenvy = "0.15"
 base64 = "0.22"
 
 [target.'cfg(unix)'.dependencies]
