@@ -54,7 +54,7 @@ impl Drop for HandleGuard {
     }
 }
 
-unsafe fn verify_owner_only_impl(path: &Path) -> Result<Option<AclProblem>, AclCheckError> {
+unsafe fn verify_owner_only_impl(path: &Path) -> Result<Option<AclProblem>, AclCheckError> { unsafe {
     let wide: Vec<u16> = path
         .as_os_str()
         .encode_wide()
@@ -124,9 +124,9 @@ unsafe fn verify_owner_only_impl(path: &Path) -> Result<Option<AclProblem>, AclC
     }
 
     Ok(None)
-}
+}}
 
-unsafe fn well_known_sid(sid_type: i32) -> Result<Vec<u8>, AclCheckError> {
+unsafe fn well_known_sid(sid_type: i32) -> Result<Vec<u8>, AclCheckError> { unsafe {
     let mut buf = vec![0u8; 256];
     let mut size = buf.len() as u32;
     if CreateWellKnownSid(sid_type, ptr::null_mut(), buf.as_mut_ptr() as PSID, &mut size) == 0 {
@@ -134,9 +134,9 @@ unsafe fn well_known_sid(sid_type: i32) -> Result<Vec<u8>, AclCheckError> {
     }
     buf.truncate(size as usize);
     Ok(buf)
-}
+}}
 
-unsafe fn current_process_user_sid() -> Result<Vec<u8>, AclCheckError> {
+unsafe fn current_process_user_sid() -> Result<Vec<u8>, AclCheckError> { unsafe {
     let mut token: HANDLE = ptr::null_mut();
     if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) == 0 {
         return Err(AclCheckError("OpenProcessToken に失敗しました".to_string()));
@@ -168,4 +168,4 @@ unsafe fn current_process_user_sid() -> Result<Vec<u8>, AclCheckError> {
     let sid_bytes =
         std::slice::from_raw_parts(token_user.User.Sid as *const u8, sid_len as usize).to_vec();
     Ok(sid_bytes)
-}
+}}
