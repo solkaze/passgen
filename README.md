@@ -45,32 +45,28 @@ site + ":passgen" (salt) ────────┘
 
 ## インストール
 
-### クイックインストール（Linux / macOS / WSL2）
+### バイナリをダウンロードする場合
 
-プロジェクトには `init.sh` が同梱されています。ビルドと `/usr/local/bin` へのシンボリックリンク作成、設定ファイル配置までをまとめて行います。
+[Releases](https://github.com/<your-account>/pass-gen/releases) から OS に合ったアーカイブをダウンロードし、展開してください。
+
+```sh
+passgen init
+```
+
+`passgen init` を実行すると、実行中のバイナリを `~/.local/bin/passgen` にコピーします。`~/.local/bin` が PATH に含まれていない場合は、追加方法が案内されます。
+
+### ソースからビルドする場合
 
 ```sh
 git clone https://github.com/<your-account>/pass-gen.git
 cd pass-gen
-./init.sh
-```
-
-このスクリプトは次のことを行います。
-
-1. プロジェクトルートに `.env` を作成（ポート番号の設定、既に存在する場合はスキップ）
-2. `cargo build --release` を実行
-3. `/usr/local/bin/pass-gen` から `target/release/pass-gen` へシンボリックリンクを作成（`sudo` が必要）
-
-### 手動ビルド
-
-`init.sh` を使わずにビルドする場合は次のとおりです。
-
-```sh
 cargo build --release
-# 実行ファイル: target/release/pass-gen
+./target/release/passgen init
 ```
 
-サーバーモードの UI (`html/index.html`) とポート設定 (`.env`) はプロジェクトルート基準で解決されます。ビルド後も**プロジェクトディレクトリはそのままの場所に残してください**（実行ファイルから相対的に参照されます）。移動させたい場合はプロジェクトごと移動してください。
+`cargo build --release` の後に `passgen init` を実行すると、`target/release/passgen` が `~/.local/bin/passgen` にコピーされます。ソースを更新して再ビルドした場合は、`passgen init` を再実行してコピーを更新してください。
+
+> **サーバーモード（`-S`）について**: `.env` と `html/index.html` は実行ファイルのパスから 2 階層上（プロジェクトルート）を基準に解決されるため、`passgen init` でコピーした後は正しく動作しません。サーバーモードを使う場合は、プロジェクトディレクトリ内の `target/release/passgen` を直接実行してください。
 
 ---
 

@@ -1,5 +1,5 @@
 use clap::builder::styling::{AnsiColor, Styles};
-use clap::Parser;
+use clap::{Parser, Subcommand};
 
 use crate::config::{
     DEFAULT_ARGON2_MEMORY_COST_KIB, DEFAULT_ARGON2_PARALLELISM, DEFAULT_ARGON2_TIME_COST,
@@ -23,12 +23,25 @@ fn help_styles() -> Styles {
 }
 
 // ============================================================
+// サブコマンドの定義
+// ============================================================
+
+#[derive(Subcommand, Debug)]
+pub enum Commands {
+    /// passgenを~/.local/binにインストールし、PATHに登録します
+    Init,
+}
+
+// ============================================================
 // CLIの定義
 // ============================================================
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None, styles = help_styles())]
 pub struct Args {
+    #[command(subcommand)]
+    pub command: Option<Commands>,
+
     /// サイト名
     #[arg(short, long, default_value = "")]
     pub site: String,

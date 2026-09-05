@@ -1,6 +1,7 @@
 mod cli;
 mod clipboard;
 mod config;
+mod init;
 mod input;
 mod kdf;
 mod seed;
@@ -10,12 +11,17 @@ mod winacl;
 
 use clap::Parser;
 
-use cli::Args;
+use cli::{Args, Commands};
 use config::MIN_PASSWORD_LENGTH;
 use kdf::{generate_password, GenerateOptions, KdfAlgorithm, SYMBOLS};
 
 fn main() {
     let args = Args::parse();
+
+    if let Some(Commands::Init) = args.command {
+        init::run_init();
+        return;
+    }
 
     let seed_path = config::seed_file_path();
     let seed = seed::load_or_create_seed(&seed_path);

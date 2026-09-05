@@ -77,8 +77,8 @@ pub fn home_dir() -> PathBuf {
 /// 実行ファイルから見たプロジェクトルートを返す。
 /// 実行ファイルは `<project>/target/release/pass-gen` に置かれている想定で、
 /// 2 階層上をプロジェクトルートとする。
-/// `init.sh` で `/usr/local/bin/pass-gen` にシンボリックリンクを張った場合でも、
-/// `current_exe()` はリンクの実体パスを返すので同じ解決ができる。
+/// `passgen init` でコピーした先の実行ファイルではこの解決は成立しない
+/// （サーバーモードはプロジェクトディレクトリ内の実行ファイルから起動する想定）。
 pub fn project_root() -> PathBuf {
     let exe = std::env::current_exe().expect("実行ファイルのパスを取得できません");
     exe.parent() // target/release
