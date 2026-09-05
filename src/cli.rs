@@ -1,3 +1,4 @@
+use clap::builder::styling::{AnsiColor, Styles};
 use clap::Parser;
 
 use crate::config::{
@@ -7,11 +8,26 @@ use crate::config::{
 use crate::kdf::KdfAlgorithm;
 
 // ============================================================
+// ヘルプ表示のスタイル定義
+// ============================================================
+
+fn help_styles() -> Styles {
+    Styles::styled()
+        .header(AnsiColor::Yellow.on_default().bold())
+        .usage(AnsiColor::Yellow.on_default().bold())
+        .literal(AnsiColor::Green.on_default().bold())
+        .placeholder(AnsiColor::Cyan.on_default())
+        .valid(AnsiColor::Green.on_default())
+        .invalid(AnsiColor::Red.on_default().bold())
+        .error(AnsiColor::Red.on_default().bold())
+}
+
+// ============================================================
 // CLIの定義
 // ============================================================
 
 #[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
+#[command(author, version, about, long_about = None, styles = help_styles())]
 pub struct Args {
     /// サイト名
     #[arg(short, long, default_value = "")]
