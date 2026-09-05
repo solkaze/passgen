@@ -1,4 +1,6 @@
+#[cfg(unix)]
 use std::fs;
+#[cfg(unix)]
 use std::io::Write;
 
 #[cfg(unix)]
