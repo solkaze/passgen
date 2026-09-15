@@ -83,7 +83,7 @@ pass-gen -s github.com
 | オプション | 説明 | デフォルト |
 |---|---|---|
 | `-s, --site <NAME>` | サイト名（salt の元になる） | `""` |
-| `-l, --length <N>` | 生成するパスワードの長さ（8 以上） | `48` |
+| `-l, --length <N>` | 生成するパスワードの長さ（8 以上） | `64` |
 | `--kdf <pbkdf2\|argon2id>` | 鍵導出アルゴリズム | `argon2id` |
 | `-i, --iterations <N>` | PBKDF2 のイテレーション回数（`--kdf pbkdf2` の場合のみ） | `600000` |
 | `--time-cost <N>` | Argon2id のタイムコスト（`--kdf argon2id` の場合のみ） | `3` |
