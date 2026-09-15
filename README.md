@@ -1,11 +1,11 @@
-# pass-gen
+# passgen
 
 コアパスワードとサイト名から、決定論的にパスワードを生成する Rust 製のパスワードジェネレータです。
 生成されたパスワードはどこにも保存されません。同じ入力からは常に同じパスワードが再現されるため、保管の必要がありません。
 
 - **決定論的生成**: `コアパスワード + サイト名 + 端末ごとのシード` から Argon2id（デフォルト）または PBKDF2-HMAC-SHA256（互換用）で導出
 - **保存ゼロ**: 生成結果は一切保存されず、必要なときに再生成する
-- **CLI 専用**: ターミナルで完結する CLI モードのみ
+- **シンプルな CLI**: 対話プロンプトでコアパスワードを入力するだけのコマンド 1 つ
 - **クロスプラットフォーム**: Linux / macOS / Windows / WSL2 に対応
 
 ---
@@ -22,13 +22,13 @@ core password (ユーザー入力)   ────┤   (--kdf で選択、デフ
 site + ":passgen" (salt) ────────┘
 ```
 
-- **seed**: 初回起動時に `~/.config/passgen/passgen_seed` に自動生成される 512 バイト（4096bit）のランダム値。SSH 秘密鍵などと同様に、`BEGIN/END PASSGEN PRIVATE SEED` で囲んだPEM風のテキストとして保存され、Unix ではパーミッション `0600` で保存されます（パーミッションが異なる場合は実行を中止します）。この値が同じコアパスワード・サイト名でも端末ごとに異なる結果を出すためのキーになります。**内容を表示・共有・コミットしてはいけません。**
+- **seed**: 初回起動時に `~/.config/passgen/passgen_seed` に自動生成される 512 バイト（4096bit）のランダム値。SSH 秘密鍵などと同様に、`BEGIN/END PASSGEN PRIVATE SEED` で囲んだPEM風のテキストとして保存され、Unix ではパーミッション `0600` で保存されます（パーミッションが異なる場合は実行を中止します）。Windows では NTFS の ACL を検査し、所有者・Administrators・SYSTEM 以外のアカウントがアクセスできる状態であれば実行を中止します。この値が同じコアパスワード・サイト名でも端末ごとに異なる結果を出すためのキーになります。**内容を表示・共有・コミットしてはいけません。**
 - **鍵導出アルゴリズム**: デフォルトは Argon2id（メモリハードで GPU/ASIC 総当たりに強い）。`--kdf pbkdf2` を指定すると、旧バージョン（PBKDF2-HMAC-SHA256、600,000 回）で生成したパスワードを再現できます。
   - Argon2id のデフォルトコスト: タイムコスト `3`、メモリコスト `65536 KiB`（64 MiB）、並列度 `4`。`--time-cost` / `--memory-cost` / `--parallelism` で変更できます。
   - PBKDF2 のデフォルトイテレーション: `600,000` 回。`-i/--iterations` で変更できます。
 - **文字種の保証**: 数字・記号を使う設定のときに、万一導出バイトの出力にそれらが含まれなかった場合でも、導出バイトから決定論的に位置と文字を選んで差し替えます。こちらも再現性が保たれます。
 
-同じ `seed + core + site + length + kdf + コストパラメータ + 文字種フラグ` であれば、常に同じパスワードが生成されます。**`--kdf` やコストパラメータを変更すると、同じサイト・コアパスワードでも別のパスワードになります。**
+同じ `seed + core + site + length + kdf + コストパラメータ + 文字種フラグ + 記号セット` であれば、常に同じパスワードが生成されます。**`--kdf` やコストパラメータを変更すると、同じサイト・コアパスワードでも別のパスワードになります。**
 
 ---
 
@@ -39,7 +39,8 @@ site + ":passgen" (salt) ────────┘
   - **Linux (Wayland)**: `wl-copy`
   - **Linux (X11)**: `xclip` または `xsel`
   - **WSL2**: `clip.exe`（Windows 側に標準搭載）
-  - **macOS / Windows**: 追加依存なし
+  - **Windows**: 追加依存なし
+  - **macOS**: 現状は `pbcopy` に未対応のため、`xclip` / `xsel` などを別途用意する必要があります
 
 ---
 
@@ -47,7 +48,7 @@ site + ":passgen" (salt) ────────┘
 
 ### バイナリをダウンロードする場合
 
-[Releases](https://github.com/<your-account>/pass-gen/releases) から OS に合ったアーカイブをダウンロードし、展開してください。
+[Releases](https://github.com/solkaze/passgen/releases) から OS に合ったアーカイブをダウンロードし、展開してください。
 
 ```sh
 passgen init
@@ -58,8 +59,8 @@ passgen init
 ### ソースからビルドする場合
 
 ```sh
-git clone https://github.com/<your-account>/pass-gen.git
-cd pass-gen
+git clone https://github.com/solkaze/passgen.git
+cd passgen
 cargo build --release
 ./target/release/passgen init
 ```
@@ -70,10 +71,10 @@ cargo build --release
 
 ## 使い方
 
-### CLI モード
+### 基本的な使い方
 
 ```sh
-pass-gen -s github.com
+passgen -s github.com
 ```
 
 プロンプトでコアパスワードを入力すると、パスワードが標準出力に表示されます。コアパスワードの入力はターミナル上でマスク（`*`）表示されます。
@@ -92,21 +93,27 @@ pass-gen -s github.com
 | `-c, --copy` | 生成結果をクリップボードにコピー | off |
 | `--no-digits` | 数字を含めない | off |
 | `--no-symbols` | 記号を含めない | off |
+| `-C, --char <CHARS>` | 記号として使用する文字を指定する（デフォルトの記号セットを置き換える） | `!@#$%^&*()-_=+[]{}\|;:,.<>?` |
+
+`-C/--char` は ASCII 文字を 1 文字以上指定してください（重複文字は自動的に除去されます）。`--no-symbols` と同時に指定した場合は警告を表示したうえで `-C/--char` が優先され、記号が使用されます。
 
 #### 使用例
 
 ```sh
 # クリップボードにコピー（対応ツールが必要）
-pass-gen -s github.com -c
+passgen -s github.com -c
 
 # 長さ 32・記号なし
-pass-gen -s example.com -l 32 --no-symbols
+passgen -s example.com -l 32 --no-symbols
+
+# 使用できる記号が限られているサイト向けに、記号セットを指定する
+passgen -s example.com -C '!@#-_'
 
 # 旧バージョン（PBKDF2）で生成したパスワードを再現する
-pass-gen -s bank.example.com --kdf pbkdf2 -i 1000000
+passgen -s bank.example.com --kdf pbkdf2 -i 1000000
 
 # Argon2id のコストを上げる
-pass-gen -s bank.example.com --time-cost 5 --memory-cost 131072
+passgen -s bank.example.com --time-cost 5 --memory-cost 131072
 ```
 
 ---

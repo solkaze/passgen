@@ -72,5 +72,5 @@ fn print_path_hint(install_dir: &Path) {
     }
 
     println!();
-    println!("CLI モード:      passgen -s github.com");
+    println!("使い方の例: passgen -s github.com");
 }
