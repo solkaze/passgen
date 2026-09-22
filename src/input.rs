@@ -64,5 +64,8 @@ pub fn prompt_masked(prompt: &str) -> String {
 
 #[cfg(windows)]
 pub fn prompt_masked(prompt: &str) -> String {
-    rpassword::prompt_password(prompt).expect("入力エラー")
+    use std::io::Write;
+    eprint!("{}", prompt);
+    std::io::stderr().flush().expect("出力エラー");
+    rpassword::read_password().expect("入力エラー")
 }
