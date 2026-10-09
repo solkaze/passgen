@@ -1,6 +1,6 @@
 use std::fs;
-use std::io::Write;
-use std::path::PathBuf;
+use std::io::{self, Write};
+use std::path::{Path, PathBuf};
 
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
@@ -8,11 +8,11 @@ use base64::Engine;
 use crate::config::SEED_BYTES;
 
 #[cfg(unix)]
-use crate::config::SEED_FILE_MODE;
-#[cfg(unix)]
-use std::os::unix::fs::OpenOptionsExt;
+use crate::config::{DATA_DIR_MODE, SEED_FILE_MODE};
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
+#[cfg(unix)]
+use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
 
 // ============================================================
 // シードファイル処理
@@ -31,7 +31,7 @@ const PEM_LINE_WIDTH: usize = 64;
 
 pub fn load_or_create_seed(path: &PathBuf) -> Vec<u8> {
     if !path.exists() {
-        migrate_legacy_seed(path);
+        migrate_legacy_seed(path, &crate::config::legacy_seed_file_paths());
     }
 
     if path.exists() {
@@ -59,23 +59,57 @@ pub fn load_or_create_seed(path: &PathBuf) -> Vec<u8> {
     }
 }
 
-/// 旧パス（~/.pass-gen-seed）にシードファイルが残っている場合、新パスへ移行する。
+/// 旧パス（~/.config/passgen/passgen_seed、~/.pass-gen-seed）にシードファイルが
+/// 残っている場合、新パスへ移行する。
 /// 既存パスワードとの互換性を保つため、新規生成より移行を優先する。
-fn migrate_legacy_seed(path: &PathBuf) {
-    let legacy_path = crate::config::legacy_seed_file_path();
-    if !legacy_path.exists() {
+fn migrate_legacy_seed(path: &Path, legacy_paths: &[PathBuf]) {
+    let Some(legacy_path) = legacy_paths.iter().find(|p| p.exists()) else {
         return;
-    }
+    };
 
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).expect("設定ディレクトリの作成に失敗しました");
+        create_data_dir(parent);
     }
-    fs::rename(&legacy_path, path).expect("シードファイルの移行に失敗しました");
+    move_file(legacy_path, path).expect("シードファイルの移行に失敗しました");
     eprintln!(
         "シードファイルを移行しました: {} -> {}",
         legacy_path.display(),
         path.display()
     );
+}
+
+/// ファイルを移動する。renameはファイルシステムをまたげないため、失敗時はコピーで代替する。
+/// コピーが途中で失敗しても壊れたシードが移行先に残らないよう、
+/// 一時ファイルへコピーしてからrenameで確定させる。
+fn move_file(from: &Path, to: &Path) -> io::Result<()> {
+    if fs::rename(from, to).is_ok() {
+        return Ok(());
+    }
+    let tmp = to.with_extension("tmp");
+    fs::copy(from, &tmp)?;
+    fs::rename(&tmp, to)?;
+    fs::remove_file(from)
+}
+
+/// シードファイルを置くデータディレクトリを作成する。
+/// Unix では新規作成時のみ 0700 とし、既存ディレクトリのパーミッションは変更しない。
+#[cfg(unix)]
+fn create_data_dir(dir: &Path) {
+    if dir.is_dir() {
+        return;
+    }
+    if let Some(parent) = dir.parent() {
+        fs::create_dir_all(parent).expect("データディレクトリの作成に失敗しました");
+    }
+    fs::DirBuilder::new()
+        .mode(DATA_DIR_MODE)
+        .create(dir)
+        .expect("データディレクトリの作成に失敗しました");
+}
+
+#[cfg(windows)]
+fn create_data_dir(dir: &Path) {
+    fs::create_dir_all(dir).expect("データディレクトリの作成に失敗しました");
 }
 
 /// シードファイルの中身を読み込み用のバイト列にデコードする。
@@ -143,13 +177,13 @@ fn encode_seed(seed: &[u8]) -> String {
 #[cfg(unix)]
 fn save_seed(path: &PathBuf, seed: &[u8]) {
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).expect("設定ディレクトリの作成に失敗しました");
+        create_data_dir(parent);
     }
     let text = encode_seed(seed);
+    // 既存のシードを上書きすると復元できないため、create_newで新規作成のみ許可する
     let mut file = fs::OpenOptions::new()
         .write(true)
-        .create(true)
-        .truncate(true)
+        .create_new(true)
         .mode(SEED_FILE_MODE)
         .open(path)
         .expect("シードファイルの作成に失敗しました");
@@ -161,13 +195,13 @@ fn save_seed(path: &PathBuf, seed: &[u8]) {
 #[cfg(windows)]
 fn save_seed(path: &PathBuf, seed: &[u8]) {
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).expect("設定ディレクトリの作成に失敗しました");
+        create_data_dir(parent);
     }
     let text = encode_seed(seed);
+    // 既存のシードを上書きすると復元できないため、create_newで新規作成のみ許可する
     let mut file = fs::OpenOptions::new()
         .write(true)
-        .create(true)
-        .truncate(true)
+        .create_new(true)
         .open(path)
         .expect("シードファイルの作成に失敗しました");
     file.write_all(text.as_bytes())
@@ -176,14 +210,15 @@ fn save_seed(path: &PathBuf, seed: &[u8]) {
 
 /// シードファイルのパーミッションを検査する。
 /// SSH秘密鍵と同様、所有者以外からの読み取りが可能な状態は情報漏洩のリスクがあるため、
-/// 600（所有者のみ読み書き可能）でない場合は実行を中止する。
+/// グループ・その他に権限が付いている場合は実行を中止する。
+/// 所有者の権限は問わない（旧バージョンで生成した 0600 のシードもそのまま使える）。
 #[cfg(unix)]
 fn check_seed_permissions(path: &PathBuf) {
     let metadata = fs::metadata(path).expect("シードファイルの情報取得に失敗しました");
     let mode = metadata.permissions().mode() & 0o777;
-    if mode != SEED_FILE_MODE {
+    if mode & 0o077 != 0 {
         eprintln!(
-            "エラー: シードファイルのパーミッションが不正です: {} (現在: {:04o}, 期待値: {:04o})",
+            "エラー: シードファイルのパーミッションが不正です: {} (現在: {:04o}, 推奨: {:04o})",
             path.display(),
             mode,
             SEED_FILE_MODE
@@ -248,4 +283,66 @@ fn print_windows_fix_hint(path: &std::path::Path) {
         path.display(),
         user
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_dir(name: &str) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("passgen-test-{}-{}", name, std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn test_migrate_prefers_newest_legacy_path() {
+        let dir = temp_dir("migrate");
+        let newer = dir.join("config").join("passgen_seed");
+        let older = dir.join(".pass-gen-seed");
+        fs::create_dir_all(newer.parent().unwrap()).unwrap();
+        fs::write(&newer, "newer").unwrap();
+        fs::write(&older, "older").unwrap();
+
+        let dest = dir.join("share").join("passgen").join("passgen_seed");
+        migrate_legacy_seed(&dest, &[newer.clone(), older.clone()]);
+
+        assert_eq!(fs::read_to_string(&dest).unwrap(), "newer");
+        assert!(!newer.exists());
+        assert!(older.exists());
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_migrate_without_legacy_seed_creates_nothing() {
+        let dir = temp_dir("migrate-none");
+        let dest = dir.join("share").join("passgen").join("passgen_seed");
+        migrate_legacy_seed(&dest, &[dir.join("missing")]);
+
+        assert!(!dest.exists());
+        assert!(!dest.parent().unwrap().exists());
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_saved_seed_is_read_only_in_private_dir() {
+        let dir = temp_dir("save");
+        let dest = dir.join("passgen").join("passgen_seed");
+        let seed = generate_seed();
+        save_seed(&dest, &seed);
+
+        let file_mode = fs::metadata(&dest).unwrap().permissions().mode() & 0o777;
+        let dir_mode = fs::metadata(dest.parent().unwrap())
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(file_mode, SEED_FILE_MODE);
+        assert_eq!(dir_mode, DATA_DIR_MODE);
+        assert_eq!(decode_seed(&fs::read(&dest).unwrap()), seed);
+        fs::remove_dir_all(&dir).unwrap();
+    }
 }

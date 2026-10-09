@@ -16,6 +16,8 @@ clap = { version = "4", features = ["derive"] }
 getrandom = "0.2"
 rpassword = "7"
 base64 = "0.22"
+toml = "0.8"
+serde = { version = "1", features = ["derive"] }
 
 [target.'cfg(unix)'.dependencies]
 termios = "0.3"

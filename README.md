@@ -22,7 +22,7 @@ core password (ユーザー入力)   ────┤   (--kdf で選択、デフ
 site + ":passgen" (salt) ────────┘
 ```
 
-- **seed**: 初回起動時に `~/.config/passgen/passgen_seed` に自動生成される 512 バイト（4096bit）のランダム値。SSH 秘密鍵などと同様に、`BEGIN/END PASSGEN PRIVATE SEED` で囲んだPEM風のテキストとして保存され、Unix ではパーミッション `0600` で保存されます（パーミッションが異なる場合は実行を中止します）。Windows では NTFS の ACL を検査し、所有者・Administrators・SYSTEM 以外のアカウントがアクセスできる状態であれば実行を中止します。この値が同じコアパスワード・サイト名でも端末ごとに異なる結果を出すためのキーになります。**内容を表示・共有・コミットしてはいけません。**
+- **seed**: 初回起動時に `~/.local/share/passgen/passgen_seed` に自動生成される 512 バイト（4096bit）のランダム値。SSH 秘密鍵などと同様に、`BEGIN/END PASSGEN PRIVATE SEED` で囲んだPEM風のテキストとして保存され、Unix ではパーミッション `0400`（ディレクトリは `0700`）で保存されます（グループ・その他に権限が付いている場合は実行を中止します）。Windows では NTFS の ACL を検査し、所有者・Administrators・SYSTEM 以外のアカウントがアクセスできる状態であれば実行を中止します。この値が同じコアパスワード・サイト名でも端末ごとに異なる結果を出すためのキーになります。**内容を表示・共有・コミットしてはいけません。**
 - **鍵導出アルゴリズム**: デフォルトは Argon2id（メモリハードで GPU/ASIC 総当たりに強い）。`--kdf pbkdf2` を指定すると、旧バージョン（PBKDF2-HMAC-SHA256、600,000 回）で生成したパスワードを再現できます。
   - Argon2id のデフォルトコスト: タイムコスト `3`、メモリコスト `65536 KiB`（64 MiB）、並列度 `4`。`--time-cost` / `--memory-cost` / `--parallelism` で変更できます。
   - PBKDF2 のデフォルトイテレーション: `600,000` 回。`-i/--iterations` で変更できます。
@@ -54,7 +54,13 @@ site + ":passgen" (salt) ────────┘
 passgen init
 ```
 
-`passgen init` を実行すると、実行中のバイナリを `~/.local/bin/passgen` にコピーします。`~/.local/bin` が PATH に含まれていない場合は、追加方法が案内されます。
+`passgen init` を実行すると、次の準備を行います。何度実行しても既存のファイルは上書きされません。
+
+1. 実行中のバイナリを `~/.local/bin/passgen` にコピーする（`~/.local/bin` が PATH に含まれていない場合は、追加方法が案内されます）
+2. 設定ファイルのテンプレートを `~/.config/passgen/settings.toml` に作成する
+3. シードファイルを `~/.local/share/passgen/passgen_seed` に準備する（旧パスにある場合は移行、なければ新規生成）
+
+別端末のシードを引き継ぐ場合は、`passgen init` の前にシードファイルをコピーしておいてください（[別端末で同じパスワードを再現したい場合](#別端末で同じパスワードを再現したい場合)を参照）。
 
 ### ソースからビルドする場合
 
@@ -65,7 +71,7 @@ cargo build --release
 ./target/release/passgen init
 ```
 
-`cargo build --release` の後に `passgen init` を実行すると、`target/release/passgen` が `~/.local/bin/passgen` にコピーされます。ソースを更新して再ビルドした場合は、`passgen init` を再実行してコピーを更新してください。
+`cargo build --release` の後に `passgen init` を実行すると、`target/release/passgen` が `~/.local/bin/passgen` にコピーされ、設定ファイルとシードファイルが準備されます。ソースを更新して再ビルドした場合は、`passgen init` を再実行してコピーを更新してください。
 
 ---
 
@@ -91,8 +97,11 @@ passgen -s github.com
 | `--memory-cost <KiB>` | Argon2id のメモリコスト（`--kdf argon2id` の場合のみ） | `65536` |
 | `--parallelism <N>` | Argon2id の並列度（`--kdf argon2id` の場合のみ） | `4` |
 | `-c, --copy` | 生成結果をクリップボードにコピー | off |
+| `--no-copy` | クリップボードにコピーしない（設定ファイルの `copy = true` を打ち消す） | off |
 | `--no-digits` | 数字を含めない | off |
+| `--digits` | 数字を含める（設定ファイルの `digits = false` を打ち消す） | off |
 | `--no-symbols` | 記号を含めない | off |
+| `--symbols` | 記号を含める（設定ファイルの `symbols = false` を打ち消す） | off |
 | `-C, --char <CHARS>` | 記号として使用する文字を指定する（デフォルトの記号セットを置き換える） | `!@#$%^&*()-_=+[]{}\|;:,.<>?` |
 
 `-C/--char` は ASCII 文字を 1 文字以上指定してください（重複文字は自動的に除去されます）。`--no-symbols` と同時に指定した場合は警告を表示したうえで `-C/--char` が優先され、記号が使用されます。
@@ -118,23 +127,62 @@ passgen -s bank.example.com --time-cost 5 --memory-cost 131072
 
 ---
 
+## 設定ファイル
+
+毎回同じオプションを指定する場合は、`~/.config/passgen/settings.toml` に書いておくと省略できます。`passgen init` を実行すると、全項目をコメントアウトしたテンプレートが作成されます。
+
+```toml
+length = 32
+kdf = "argon2id"
+time_cost = 5
+memory_cost = 131072
+copy = true
+char = "!@#-_"
+```
+
+| キー | 対応するオプション | 型 |
+|---|---|---|
+| `length` | `-l, --length` | 整数 |
+| `kdf` | `--kdf` | `"argon2id"` または `"pbkdf2"` |
+| `iterations` | `-i, --iterations` | 整数 |
+| `time_cost` | `--time-cost` | 整数 |
+| `memory_cost` | `--memory-cost` | 整数（KiB） |
+| `parallelism` | `--parallelism` | 整数 |
+| `copy` | `-c, --copy` / `--no-copy` | 真偽値 |
+| `digits` | `--digits` / `--no-digits` | 真偽値 |
+| `symbols` | `--symbols` / `--no-symbols` | 真偽値 |
+| `char` | `-C, --char` | 文字列 |
+
+- 値は **コマンドラインオプション > 設定ファイル > 組み込みのデフォルト** の順で決まります。サイト名（`-s`）は設定ファイルには書けません。
+- すべてのキーは省略できます。未知のキーや型の合わない値がある場合は、エラーを表示して実行を中止します（打ち間違いに気付かないまま別のパスワードが生成されるのを防ぐためです）。
+- `symbols = false` のときは `char` を書いていても記号は使われません。コマンドラインで `-C/--char` を指定した場合は、設定ファイルの `symbols` にかかわらず記号が使われます。
+- **`copy` 以外の値を変えると、同じサイト名・コアパスワードでも生成されるパスワードが変わります。** 実際に使われた値は、生成時に表示される `生成中... (...)` の行で確認できます。
+
+---
+
 ## ファイルとディレクトリ
 
 | パス | 内容 |
 |---|---|
-| `~/.config/passgen/passgen_seed` | 端末ごとのシード（512 バイト、PEM風テキスト、`0600`）。秘密鍵と同様に扱ってください。|
+| `~/.config/passgen/settings.toml` | 設定ファイル。自由に編集でき、dotfiles などで管理しても問題ありません。|
+| `~/.local/share/passgen/passgen_seed` | 端末ごとのシード（512 バイト、PEM風テキスト、`0400`）。秘密鍵と同様に扱ってください。|
 
-旧バージョンでは `~/.pass-gen-seed` に生成していましたが、初回起動時に自動で新しいパスへ移行されます。
+シードは失うと復元できず、公開もできないファイルです。編集・削除・dotfiles 管理の対象になりやすい設定ディレクトリに置くと誤操作や誤コミットの原因になるため、設定ファイルとは別のディレクトリに置いています。
+
+旧バージョンでは `~/.config/passgen/passgen_seed`（さらに古いバージョンでは `~/.pass-gen-seed`）に生成していましたが、初回起動時または `passgen init` の実行時に自動で新しいパスへ移行されます。
 
 ### 別端末で同じパスワードを再現したい場合
 
-同じ結果を出すには `~/.config/passgen/passgen_seed` を移行先にコピーしてください。パーミッションは `0600` を保ってください。
+同じ結果を出すには `~/.local/share/passgen/passgen_seed` を移行先にコピーしてください。パーミッションは所有者のみがアクセスできる状態（`0400`）を保ってください。設定ファイルで値を変更している場合は、`~/.config/passgen/settings.toml` も合わせてコピーしてください。
 
 ```sh
 # 安全な経路で転送する（例: scp）
-scp ~/.config/passgen/passgen_seed user@other-host:~/.config/passgen/passgen_seed
-ssh user@other-host 'chmod 600 ~/.config/passgen/passgen_seed'
+ssh user@other-host 'mkdir -p ~/.local/share/passgen && chmod 700 ~/.local/share/passgen'
+scp ~/.local/share/passgen/passgen_seed user@other-host:~/.local/share/passgen/passgen_seed
+ssh user@other-host 'chmod 400 ~/.local/share/passgen/passgen_seed'
 ```
+
+移行先で既にシードが生成されている場合は、読み取り専用のため上書きできません。移行先のシードが不要であることを確認したうえで、削除してからコピーしてください。
 
 シードが異なれば、同じコアパスワード・サイト名でも別のパスワードになります。
 
@@ -143,7 +191,8 @@ ssh user@other-host 'chmod 600 ~/.config/passgen/passgen_seed'
 ## セキュリティに関する注意
 
 - **コアパスワードは誰にも教えず、どこにも保存しないでください。** このツールが守っているのは「生成結果を保存しない」ことだけです。コアパスワードの強度がそのままパスワードの強度になります。
-- **`~/.config/passgen/passgen_seed` のバックアップ**を取ってください。このファイルを失うと、同じコアパスワードを入れても以前と同じパスワードは再現できなくなります。SSH 秘密鍵と同様、このファイルの内容を表示・共有・コミットしないでください。
+- **`~/.local/share/passgen/passgen_seed` のバックアップ**を取ってください。このファイルを失うと、同じコアパスワードを入れても以前と同じパスワードは再現できなくなります。SSH 秘密鍵と同様、このファイルの内容を表示・共有・コミットしないでください。
+- **設定ファイルで値を変更している場合は、その内容も控えておいてください。** 長さや KDF のパラメータが変わると、同じシード・コアパスワードでも以前と同じパスワードは再現できません。
 
 ---
 

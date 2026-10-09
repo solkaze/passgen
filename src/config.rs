@@ -37,15 +37,26 @@ pub const PROMPT_CORE_PASSWORD: &str = "コアパスワードを入力してく�
 /// 設定ディレクトリ名（~/.config 配下）
 pub const CONFIG_DIR_NAME: &str = "passgen";
 
+/// データディレクトリ名（~/.local/share 配下）
+pub const DATA_DIR_NAME: &str = "passgen";
+
+/// 設定ファイル名
+pub const SETTINGS_FILE_NAME: &str = "settings.toml";
+
 /// シードファイル名
 pub const SEED_FILE_NAME: &str = "passgen_seed";
 
 /// 旧シードファイル名（ホーム直下、移行用）
 pub const LEGACY_SEED_FILE_NAME: &str = ".pass-gen-seed";
 
-/// シードファイルのパーミッション（Unix のみ）
+/// シードファイルのパーミッション（Unix のみ）。
+/// 生成後に書き換えることはないため、誤上書きを防ぐ目的で所有者も読み取り専用とする。
 #[cfg(unix)]
-pub const SEED_FILE_MODE: u32 = 0o600;
+pub const SEED_FILE_MODE: u32 = 0o400;
+
+/// シードファイルを置くデータディレクトリのパーミッション（Unix のみ）
+#[cfg(unix)]
+pub const DATA_DIR_MODE: u32 = 0o700;
 
 /// シードのバイト長（512バイト = 4096bit。RSA-4096の秘密鍵と同等のビット数）
 pub const SEED_BYTES: usize = 512;
@@ -62,16 +73,31 @@ pub fn home_dir() -> PathBuf {
 }
 
 /// 設定ディレクトリ（~/.config/passgen）を返す。
+/// ユーザーが編集する設定ファイルのみを置き、シードは置かない。
 pub fn config_dir() -> PathBuf {
     home_dir().join(".config").join(CONFIG_DIR_NAME)
 }
 
-pub fn seed_file_path() -> PathBuf {
-    config_dir().join(SEED_FILE_NAME)
+/// データディレクトリ（~/.local/share/passgen）を返す。
+/// 設定ディレクトリは編集・削除・dotfiles管理の対象になりやすいため、
+/// 失うと復元できないシードはこちらに分離して置く。
+pub fn data_dir() -> PathBuf {
+    home_dir().join(".local").join("share").join(DATA_DIR_NAME)
 }
 
-/// 旧バージョンで使用していたシードファイルのパス（~/.pass-gen-seed）。
+pub fn settings_file_path() -> PathBuf {
+    config_dir().join(SETTINGS_FILE_NAME)
+}
+
+pub fn seed_file_path() -> PathBuf {
+    data_dir().join(SEED_FILE_NAME)
+}
+
+/// 旧バージョンで使用していたシードファイルのパス。新しいものから順に返す。
 /// 新パスへの自動移行にのみ使用する。
-pub fn legacy_seed_file_path() -> PathBuf {
-    home_dir().join(LEGACY_SEED_FILE_NAME)
+pub fn legacy_seed_file_paths() -> Vec<PathBuf> {
+    vec![
+        config_dir().join(SEED_FILE_NAME),
+        home_dir().join(LEGACY_SEED_FILE_NAME),
+    ]
 }

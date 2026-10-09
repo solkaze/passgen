@@ -1,7 +1,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::config::home_dir;
+use crate::config::{home_dir, seed_file_path, settings_file_path};
+use crate::{seed, settings};
 
 #[cfg(windows)]
 const BIN_NAME: &str = "passgen.exe";
@@ -12,21 +13,31 @@ fn install_dir() -> PathBuf {
     home_dir().join(".local").join("bin")
 }
 
-/// 現在実行中のバイナリを ~/.local/bin にコピーし、PATH登録を促す。
+/// passgenを使える状態にする。何度実行しても既存のファイルは上書きしない。
+///
+/// 1. 現在実行中のバイナリを ~/.local/bin にコピーする
+/// 2. 設定ファイルのテンプレートを ~/.config/passgen に作成する
+/// 3. シードファイルを ~/.local/share/passgen に準備する（旧パスからの移行、または新規生成）
 pub fn run_init() {
-    println!("=== passgen インストール ===");
+    println!("=== passgen 初期化 ===");
 
-    let current_exe = std::env::current_exe().expect("実行ファイルのパスを取得できません");
     let install_dir = install_dir();
+    install_binary(&install_dir);
+    init_settings();
+    init_seed();
+    print_path_hint(&install_dir);
+}
+
+fn install_binary(install_dir: &Path) {
+    let current_exe = std::env::current_exe().expect("実行ファイルのパスを取得できません");
     let dest = install_dir.join(BIN_NAME);
 
     if is_same_file(&current_exe, &dest) {
-        println!("スキップ: 既にインストール済みです ({})", dest.display());
-        print_path_hint(&install_dir);
+        println!("バイナリ: インストール済みです ({})", dest.display());
         return;
     }
 
-    if let Err(e) = fs::create_dir_all(&install_dir) {
+    if let Err(e) = fs::create_dir_all(install_dir) {
         eprintln!(
             "エラー: {} の作成に失敗しました: {}",
             install_dir.display(),
@@ -40,8 +51,39 @@ pub fn run_init() {
         std::process::exit(1);
     }
 
-    println!("インストール完了: {}", dest.display());
-    print_path_hint(&install_dir);
+    println!("バイナリ: インストールしました ({})", dest.display());
+}
+
+fn init_settings() {
+    let path = settings_file_path();
+    match settings::create_template_if_missing(&path) {
+        Ok(true) => println!("設定ファイル: 作成しました ({})", path.display()),
+        Ok(false) => {
+            // 既存の設定に誤りがあればここで気付けるよう、読み込めることを確認しておく
+            settings::load(&path);
+            println!("設定ファイル: 既に存在します ({})", path.display());
+        }
+        Err(e) => {
+            eprintln!(
+                "エラー: 設定ファイルの作成に失敗しました: {}: {}",
+                path.display(),
+                e
+            );
+            std::process::exit(1);
+        }
+    }
+}
+
+fn init_seed() {
+    let path = seed_file_path();
+    let existed = path.exists();
+    // 旧パスからの移行・新規生成・パーミッション検査はシードの読み込み処理に任せる
+    seed::load_or_create_seed(&path);
+    if existed {
+        println!("シードファイル: 既に存在します ({})", path.display());
+    } else {
+        println!("シードファイル: 準備しました ({})", path.display());
+    }
 }
 
 fn is_same_file(a: &Path, b: &Path) -> bool {
