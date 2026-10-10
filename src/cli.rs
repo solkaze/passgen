@@ -30,28 +30,45 @@ fn help_styles() -> Styles {
 pub enum Commands {
     /// passgenを~/.local/binにインストールし、設定ファイルとシードファイルを準備します
     Init,
+    /// サイトを登録します（URLをそのまま指定できます）
+    Add(AddArgs),
+    /// 登録済みのサイトを一覧表示します
+    List,
+    /// 登録済みのサイトを削除します
+    Remove {
+        /// 削除するサイトの登録名
+        name: String,
+    },
+}
+
+#[derive(clap::Args, Debug)]
+pub struct AddArgs {
+    /// 登録するサイトのURLまたはホスト名
+    pub site: String,
+
+    /// 生成時に指定する登録名（省略時は正規化後のサイト名）
+    #[arg(short, long)]
+    pub name: Option<String>,
+
+    /// サイト名を正規化せず、指定した文字列をそのまま登録する
+    #[arg(long)]
+    pub raw: bool,
+
+    // ここで指定した値はサイトの登録内容として保存され、生成のたびに適用される
+    #[command(flatten)]
+    pub options: GenArgs,
 }
 
 // ============================================================
-// CLIの定義
+// 生成条件のオプション
 // ============================================================
 
-// 値を取るオプションと真偽値のフラグは、省略時に設定ファイル
+// 生成時の指定と、サイト登録時（add）の指定で共通して使う。
+// 値を取るオプションと真偽値のフラグは、省略時にサイトの登録内容や設定ファイル
 // （~/.config/passgen/settings.toml）の値を使う。指定の有無を区別できるよう
 // Option で受け取り、デフォルト値の解決は呼び出し側で行う。
-#[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None, styles = help_styles())]
-#[command(
-    after_help = "省略したオプションは ~/.config/passgen/settings.toml の値が使われます（なければ上記のデフォルト）。"
-)]
-pub struct Args {
-    #[command(subcommand)]
-    pub command: Option<Commands>,
-
-    /// サイト名
-    #[arg(short, long, default_value = "")]
-    pub site: String,
-
+#[derive(clap::Args, Debug)]
+pub struct GenArgs {
     #[arg(short, long, help = format!("生成するパスワードの長さ [デフォルト: {}]", DEFAULT_LENGTH))]
     pub length: Option<usize>,
 
@@ -96,14 +113,6 @@ pub struct Args {
     )]
     pub argon2_parallelism: Option<u32>,
 
-    /// 生成したパスワードをクリップボードにコピーする
-    #[arg(short, long)]
-    pub copy: bool,
-
-    /// クリップボードにコピーしない（設定ファイルの copy = true を打ち消す）
-    #[arg(long = "no-copy", conflicts_with = "copy")]
-    pub no_copy: bool,
-
     /// 数字を含める（設定ファイルの digits = false を打ち消す）
     #[arg(long = "digits", conflicts_with = "no_digits")]
     pub digits: bool,
@@ -123,4 +132,37 @@ pub struct Args {
     /// 使用可能な記号を指定する
     #[arg(short = 'C', long = "char")]
     pub custom_symbols: Option<String>,
+}
+
+// ============================================================
+// CLIの定義
+// ============================================================
+
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None, styles = help_styles())]
+#[command(
+    after_help = "省略したオプションは、サイトの登録内容、~/.config/passgen/settings.toml の順で値が使われます（なければ上記のデフォルト）。"
+)]
+pub struct Args {
+    #[command(subcommand)]
+    pub command: Option<Commands>,
+
+    /// サイトの登録名、URL、またはホスト名（省略時は登録済みのサイトから選択）
+    #[arg(short, long)]
+    pub site: Option<String>,
+
+    /// -s の文字列を正規化せず、登録内容も参照せずにそのまま使う
+    #[arg(long, requires = "site")]
+    pub raw: bool,
+
+    #[command(flatten)]
+    pub options: GenArgs,
+
+    /// 生成したパスワードをクリップボードにコピーする
+    #[arg(short, long)]
+    pub copy: bool,
+
+    /// クリップボードにコピーしない（設定ファイルの copy = true を打ち消す）
+    #[arg(long = "no-copy", conflicts_with = "copy")]
+    pub no_copy: bool,
 }

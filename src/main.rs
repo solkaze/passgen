@@ -6,8 +6,12 @@ mod input;
 mod kdf;
 mod seed;
 mod settings;
+mod site;
+mod sites;
 #[cfg(windows)]
 mod winacl;
+
+use std::io::IsTerminal;
 
 use clap::Parser;
 
@@ -17,6 +21,7 @@ use config::{
     DEFAULT_ITERATIONS, DEFAULT_LENGTH, MIN_PASSWORD_LENGTH,
 };
 use kdf::{generate_password, GenerateOptions, KdfAlgorithm, SYMBOLS};
+use sites::SiteOptions;
 
 /// 「有効にする」「無効にする」の対になったフラグを解決する。
 /// どちらも指定されていなければ設定ファイルの値、それもなければデフォルト値を使う。
@@ -48,12 +53,58 @@ fn parse_custom_symbols(custom: &str, source: &str) -> Vec<u8> {
     custom.bytes().filter(|b| seen.insert(*b)).collect()
 }
 
-fn main() {
-    let args = Args::parse();
+/// saltに使うサイト名と、そのサイトの登録内容を決める。
+///
+/// - `--raw`: `-s` の文字列をそのまま使い、登録内容は参照しない
+/// - `-s` あり: 登録済みならその内容を使い、未登録なら正規化したサイト名を使う
+/// - `-s` なし: 登録済みのサイトから対話的に選ぶ
+fn resolve_site(args: &Args, seed: &[u8]) -> (String, SiteOptions) {
+    if args.raw {
+        // clap の requires により、--raw には必ず -s が伴う
+        return (args.site.clone().unwrap_or_default(), SiteOptions::default());
+    }
 
-    if let Some(Commands::Init) = args.command {
-        init::run_init();
-        return;
+    let entries = sites::load(&config::sites_file_path(), seed);
+    let Some(input) = &args.site else {
+        if entries.is_empty() {
+            eprintln!("エラー: サイトが登録されていません。");
+            eprintln!(
+                "passgen add <URL> で登録するか、-s でサイト名を指定してください（例: passgen -s github.com）。"
+            );
+            std::process::exit(1);
+        }
+        if !std::io::stdin().is_terminal() {
+            eprintln!("エラー: 対話的に選択できないため、-s でサイト名を指定してください。");
+            std::process::exit(1);
+        }
+        let entry = sites::pick(&entries);
+        return (entry.site.clone(), entry.options.clone());
+    };
+
+    if let Some(entry) = sites::find(&entries, input) {
+        return (entry.site.clone(), entry.options.clone());
+    }
+
+    let site = site::normalize(input);
+    // リストを使っている場合に限り、打ち間違いに気付けるよう未登録であることを知らせる
+    if !entries.is_empty() && !site.is_empty() {
+        eprintln!(
+            "警告: {:?} は登録されていません。このまま生成します（登録する場合: passgen add {}）。",
+            site, site
+        );
+    }
+    (site, SiteOptions::default())
+}
+
+fn main() {
+    let mut args = Args::parse();
+
+    match args.command.take() {
+        Some(Commands::Init) => return init::run_init(),
+        Some(Commands::Add(add)) => return sites::run_add(add),
+        Some(Commands::List) => return sites::run_list(),
+        Some(Commands::Remove { name }) => return sites::run_remove(&name),
+        None => {}
     }
 
     let settings = settings::load(&config::settings_file_path());
@@ -61,27 +112,48 @@ fn main() {
     let seed_path = config::seed_file_path();
     let seed = seed::load_or_create_seed(&seed_path);
 
-    // コマンドラインオプション > 設定ファイル > 組み込みのデフォルト の順で値を決める
-    let length = args.length.or(settings.length).unwrap_or(DEFAULT_LENGTH);
-    let kdf = args.kdf.or(settings.kdf).unwrap_or(KdfAlgorithm::Argon2id);
-    let pbkdf2_iterations = args
+    let (site, site_opts) = resolve_site(&args, &seed);
+    let opts = &args.options;
+
+    // コマンドラインオプション > サイトの登録内容 > 設定ファイル > 組み込みのデフォルト
+    // の順で値を決める
+    let length = opts
+        .length
+        .or(site_opts.length)
+        .or(settings.length)
+        .unwrap_or(DEFAULT_LENGTH);
+    let kdf = opts
+        .kdf
+        .or(site_opts.kdf)
+        .or(settings.kdf)
+        .unwrap_or(KdfAlgorithm::Argon2id);
+    let pbkdf2_iterations = opts
         .iterations
+        .or(site_opts.iterations)
         .or(settings.iterations)
         .unwrap_or(DEFAULT_ITERATIONS);
-    let argon2_time_cost = args
+    let argon2_time_cost = opts
         .argon2_time_cost
+        .or(site_opts.time_cost)
         .or(settings.time_cost)
         .unwrap_or(DEFAULT_ARGON2_TIME_COST);
-    let argon2_memory_cost = args
+    let argon2_memory_cost = opts
         .argon2_memory_cost
+        .or(site_opts.memory_cost)
         .or(settings.memory_cost)
         .unwrap_or(DEFAULT_ARGON2_MEMORY_COST_KIB);
-    let argon2_parallelism = args
+    let argon2_parallelism = opts
         .argon2_parallelism
+        .or(site_opts.parallelism)
         .or(settings.parallelism)
         .unwrap_or(DEFAULT_ARGON2_PARALLELISM);
     let copy = resolve_flag(args.copy, args.no_copy, settings.copy, false);
-    let use_digits = resolve_flag(args.digits, args.no_digits, settings.digits, true);
+    let use_digits = resolve_flag(
+        opts.digits,
+        opts.no_digits,
+        site_opts.digits.or(settings.digits),
+        true,
+    );
 
     // CLIモード
     if length < MIN_PASSWORD_LENGTH {
@@ -92,22 +164,32 @@ fn main() {
         std::process::exit(1);
     }
 
-    // 記号セットを決める。-C/--char または設定ファイルの char が指定された場合、
-    // デフォルトの記号セットを置き換える。
-    let symbols: Vec<u8> = match (&args.custom_symbols, &settings.custom_symbols) {
-        (Some(custom), _) => parse_custom_symbols(custom, "-C/--char"),
-        (None, Some(custom)) => parse_custom_symbols(custom, "設定ファイルの char"),
-        (None, None) => SYMBOLS.to_vec(),
+    // 記号セットを決める。-C/--char、サイトの登録内容、設定ファイルの char の
+    // いずれかが指定された場合、デフォルトの記号セットを置き換える。
+    let symbols: Vec<u8> = match (
+        &opts.custom_symbols,
+        &site_opts.custom_symbols,
+        &settings.custom_symbols,
+    ) {
+        (Some(custom), _, _) => parse_custom_symbols(custom, "-C/--char"),
+        (None, Some(custom), _) => parse_custom_symbols(custom, "サイトの登録内容の char"),
+        (None, None, Some(custom)) => parse_custom_symbols(custom, "設定ファイルの char"),
+        (None, None, None) => SYMBOLS.to_vec(),
     };
 
     // -C/--char をコマンドラインで指定した場合は、記号を使う意図とみなして常に有効にする
-    let use_symbols = if args.custom_symbols.is_some() {
-        if args.no_symbols {
+    let use_symbols = if opts.custom_symbols.is_some() {
+        if opts.no_symbols {
             eprintln!("警告: --no-symbols が指定されていますが、-C/--char が指定されたため記号を使用します。");
         }
         true
     } else {
-        resolve_flag(args.symbols, args.no_symbols, settings.symbols, true)
+        resolve_flag(
+            opts.symbols,
+            opts.no_symbols,
+            site_opts.symbols.or(settings.symbols),
+            true,
+        )
     };
 
     let core = input::prompt_masked(config::PROMPT_CORE_PASSWORD);
@@ -125,11 +207,7 @@ fn main() {
     };
     eprintln!(
         "生成中... (site={:?}, length={}, kdf={}, {}, digits={}, symbols={})",
-        if args.site.is_empty() {
-            "(なし)"
-        } else {
-            &args.site
-        },
+        if site.is_empty() { "(なし)" } else { &site },
         length,
         kdf,
         kdf_detail,
@@ -137,7 +215,7 @@ fn main() {
         use_symbols,
     );
 
-    let opts = GenerateOptions {
+    let generate_opts = GenerateOptions {
         length,
         kdf,
         pbkdf2_iterations,
@@ -148,7 +226,7 @@ fn main() {
         use_symbols,
         symbols: &symbols,
     };
-    let password = generate_password(&core, &args.site, &seed, &opts);
+    let password = generate_password(&core, &site, &seed, &generate_opts);
     let border = "-".repeat(password.len());
     eprintln!("{}", border);
     println!("{}", password);

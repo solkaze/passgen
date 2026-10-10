@@ -1,6 +1,6 @@
 [package]
 name = "passgen"
-version = "0.6.3"
+version = "0.8.0"
 edition = "2021"
 
 [[bin]]
@@ -18,6 +18,8 @@ rpassword = "7"
 base64 = "0.22"
 toml = "0.8"
 serde = { version = "1", features = ["derive"] }
+chacha20poly1305 = "0.10"
+hkdf = "0.12"
 
 [target.'cfg(unix)'.dependencies]
 termios = "0.3"

@@ -34,6 +34,9 @@ pub const DEFAULT_ARGON2_PARALLELISM: u32 = 4;
 /// コアパスワード入力プロンプト
 pub const PROMPT_CORE_PASSWORD: &str = "コアパスワードを入力してください: ";
 
+/// 登録済みサイトの選択プロンプト
+pub const PROMPT_SELECT_SITE: &str = "番号または登録名を入力してください: ";
+
 /// 設定ディレクトリ名（~/.config 配下）
 pub const CONFIG_DIR_NAME: &str = "passgen";
 
@@ -46,6 +49,9 @@ pub const SETTINGS_FILE_NAME: &str = "settings.toml";
 /// シードファイル名
 pub const SEED_FILE_NAME: &str = "passgen_seed";
 
+/// サイト登録リストのファイル名
+pub const SITES_FILE_NAME: &str = "passgen_sites";
+
 /// 旧シードファイル名（ホーム直下、移行用）
 pub const LEGACY_SEED_FILE_NAME: &str = ".pass-gen-seed";
 
@@ -53,6 +59,10 @@ pub const LEGACY_SEED_FILE_NAME: &str = ".pass-gen-seed";
 /// 生成後に書き換えることはないため、誤上書きを防ぐ目的で所有者も読み取り専用とする。
 #[cfg(unix)]
 pub const SEED_FILE_MODE: u32 = 0o400;
+
+/// サイト登録リストのパーミッション（Unix のみ）。登録・削除のたびに書き換える。
+#[cfg(unix)]
+pub const SITES_FILE_MODE: u32 = 0o600;
 
 /// シードファイルを置くデータディレクトリのパーミッション（Unix のみ）
 #[cfg(unix)]
@@ -91,6 +101,12 @@ pub fn settings_file_path() -> PathBuf {
 
 pub fn seed_file_path() -> PathBuf {
     data_dir().join(SEED_FILE_NAME)
+}
+
+/// サイト登録リストのパス。どのサービスにアカウントがあるかの一覧になるため、
+/// dotfiles管理の対象になりやすい設定ディレクトリではなく、シードと同じ場所に置く。
+pub fn sites_file_path() -> PathBuf {
+    data_dir().join(SITES_FILE_NAME)
 }
 
 /// 旧バージョンで使用していたシードファイルのパス。新しいものから順に返す。

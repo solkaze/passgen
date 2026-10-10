@@ -12,7 +12,7 @@ use crate::config::{KEY_LENGTH_MIN, KEY_LENGTH_MULTIPLIER, SALT_SUFFIX};
 /// 鍵導出に使用するアルゴリズム。
 /// 新規デフォルトは Argon2id。PBKDF2 は旧バージョンで生成したパスワードを
 /// 再現するための互換用として残している。
-#[derive(clap::ValueEnum, serde::Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(clap::ValueEnum, serde::Serialize, serde::Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum KdfAlgorithm {
     Pbkdf2,
