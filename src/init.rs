@@ -114,8 +114,5 @@ fn print_path_hint(install_dir: &Path) {
     }
 
     println!();
-    println!("使い方の例:");
-    println!("  passgen add https://github.com/login   # サイトを登録する");
-    println!("  passgen                                # 登録済みのサイトから選んで生成する");
-    println!("  passgen -s github.com                  # サイト名を直接指定して生成する");
+    println!("使い方の例: passgen -s github.com");
 }

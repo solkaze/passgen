@@ -94,7 +94,7 @@ fn move_file(from: &Path, to: &Path) -> io::Result<()> {
 /// シードファイルを置くデータディレクトリを作成する。
 /// Unix では新規作成時のみ 0700 とし、既存ディレクトリのパーミッションは変更しない。
 #[cfg(unix)]
-pub fn create_data_dir(dir: &Path) {
+fn create_data_dir(dir: &Path) {
     if dir.is_dir() {
         return;
     }
@@ -108,7 +108,7 @@ pub fn create_data_dir(dir: &Path) {
 }
 
 #[cfg(windows)]
-pub fn create_data_dir(dir: &Path) {
+fn create_data_dir(dir: &Path) {
     fs::create_dir_all(dir).expect("データディレクトリの作成に失敗しました");
 }
 
